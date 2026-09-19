@@ -1,3 +1,5 @@
 *.o
 .vscode/
 /build/
+.pixi/
+rmm_log.txt

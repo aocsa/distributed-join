@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 
-find_path(CUDF_INCLUDE_DIR NAMES cudf/join.hpp)
+find_path(CUDF_INCLUDE_DIR NAMES cudf/types.hpp)
 find_library(CUDF_LIBRARIES NAMES cudf REQUIRED)
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)

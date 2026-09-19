@@ -28,6 +28,15 @@
 #include <vector>
 
 /**
+ * Inner join returning all columns of *left* followed by all columns of *right*, matching the
+ * result layout of cuDF 0.19's `cudf::inner_join(left, right, left_on, right_on)`.
+ */
+std::unique_ptr<cudf::table> inner_join_all_columns(cudf::table_view left,
+                                                    cudf::table_view right,
+                                                    std::vector<cudf::size_type> const &left_on,
+                                                    std::vector<cudf::size_type> const &right_on);
+
+/**
  * Top level interface for distributed inner join.
  *
  * This function should be called collectively by all processes in MPI_COMM_WORLD. All arguments

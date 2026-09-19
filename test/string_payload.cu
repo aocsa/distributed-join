@@ -77,7 +77,7 @@ std::unique_ptr<cudf::table> generate_table(cudf::size_type nelements_per_gpu,
 
   // Construct the payload column
   std::unique_ptr<cudf::column> payload_column = cudf::make_strings_column(
-    cudf::device_span<char>(strings), cudf::device_span<cudf::size_type>(offsets));
+    cudf::device_span<char const>(strings), cudf::device_span<cudf::size_type const>(offsets), {}, 0);
 
   // Construct the key column
   std::unique_ptr<cudf::column> key_column =

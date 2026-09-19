@@ -22,8 +22,11 @@
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/distance.h>
+#include <thrust/execution_policy.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/sequence.h>
+#include <thrust/set_operations.h>
+#include <thrust/sort.h>
 
 #include <curand.h>
 #include <curand_kernel.h>

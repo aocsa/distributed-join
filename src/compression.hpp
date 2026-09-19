@@ -20,6 +20,7 @@
 
 #include <nvcomp.hpp>
 #include <nvcomp/cascaded.hpp>
+#include <nvcomp/nvcompManagerFactory.hpp>
 
 #include <cudf/column/column_view.hpp>
 #include <cudf/table/table_view.hpp>
@@ -93,8 +94,14 @@ struct compression_functor {
     size_t npartitions = uncompressed_counts.size();
     compressed_data.resize(npartitions);
 
-    std::vector<rmm::device_buffer> nvcomp_temp_spaces(npartitions);
-    std::vector<size_t> nvcomp_temp_sizes(npartitions);
+    nvcompBatchedCascadedOpts_t opts = nvcompBatchedCascadedDefaultOpts;
+    opts.type                        = nvcomp::TypeOf<T>();
+    opts.num_RLEs                    = cascaded_format.num_RLEs;
+    opts.num_deltas                  = cascaded_format.num_deltas;
+    opts.use_bp                      = cascaded_format.use_bp;
+
+    // Managers are kept alive across both passes so compression on different streams can overlap.
+    std::vector<std::unique_ptr<nvcomp::CascadedManager>> managers(npartitions);
 
     for (size_t ipartition = 0; ipartition < npartitions; ipartition++) {
       if (uncompressed_counts[ipartition] == 0) {
@@ -102,36 +109,27 @@ struct compression_functor {
         continue;
       }
 
-      nvcomp::CascadedCompressor compressor(nvcomp::TypeOf<T>(),
-                                            cascaded_format.num_RLEs,
-                                            cascaded_format.num_deltas,
-                                            cascaded_format.use_bp);
+      managers[ipartition] =
+        std::make_unique<nvcomp::CascadedManager>(opts, streams[ipartition].value());
 
-      compressor.configure(uncompressed_counts[ipartition] * sizeof(T),
-                           &nvcomp_temp_sizes[ipartition],
-                           &compressed_sizes[ipartition]);
+      nvcomp::CompressionConfig config = managers[ipartition]->configure_compression(
+        uncompressed_counts[ipartition] * sizeof(T));
 
-      nvcomp_temp_spaces[ipartition] =
-        rmm::device_buffer(nvcomp_temp_sizes[ipartition], streams[ipartition]);
       compressed_data[ipartition] =
-        rmm::device_buffer(compressed_sizes[ipartition], streams[ipartition]);
+        rmm::device_buffer(config.max_compressed_buffer_size, streams[ipartition]);
+
+      managers[ipartition]->compress(
+        static_cast<const uint8_t *>(uncompressed_data[ipartition]),
+        static_cast<uint8_t *>(compressed_data[ipartition].data()),
+        config);
     }
 
     for (size_t ipartition = 0; ipartition < npartitions; ipartition++) {
       if (uncompressed_counts[ipartition] == 0) continue;
 
-      nvcomp::CascadedCompressor compressor(nvcomp::TypeOf<T>(),
-                                            cascaded_format.num_RLEs,
-                                            cascaded_format.num_deltas,
-                                            cascaded_format.use_bp);
-
-      compressor.compress_async(uncompressed_data[ipartition],
-                                uncompressed_counts[ipartition] * sizeof(T),
-                                nvcomp_temp_spaces[ipartition].data(),
-                                nvcomp_temp_sizes[ipartition],
-                                compressed_data[ipartition].data(),
-                                &compressed_sizes[ipartition],
-                                streams[ipartition].value());
+      // Synchronizes the corresponding stream.
+      compressed_sizes[ipartition] = managers[ipartition]->get_compressed_output_size(
+        static_cast<uint8_t *>(compressed_data[ipartition].data()));
     }
   }
 
@@ -184,44 +182,24 @@ struct decompression_functor {
   {
     size_t npartitions = compressed_sizes.size();
 
-    std::vector<rmm::device_buffer> nvcomp_temp_spaces(npartitions);
-    std::vector<size_t> nvcomp_temp_sizes(npartitions);
-
-    // nvcomp::Decompressor objects are reused in the two passes below since nvcomp::Decompressor
-    // constructor can be synchrnous to the host thread. std::make_unique is used instead of
-    // std::vector because the copy constructor in nvcomp::Decompressor is deleted.
-
-    auto decompressors =
-      std::make_unique<std::unique_ptr<nvcomp::CascadedDecompressor>[]>(npartitions);
+    // Managers are kept alive until all partitions are issued so decompression on different
+    // streams can overlap.
+    std::vector<std::shared_ptr<nvcomp::nvcompManagerBase>> managers(npartitions);
 
     for (size_t ipartition = 0; ipartition < npartitions; ipartition++) {
       if (expected_output_counts[ipartition] == 0) continue;
 
-      decompressors[ipartition] = std::make_unique<nvcomp::CascadedDecompressor>();
+      const uint8_t *compressed_buffer = static_cast<const uint8_t *>(compressed_data[ipartition]);
 
-      size_t output_bytes;
-      decompressors[ipartition]->configure(compressed_data[ipartition],
-                                           compressed_sizes[ipartition],
-                                           &nvcomp_temp_sizes[ipartition],
-                                           &output_bytes,
-                                           streams[ipartition].value());
+      managers[ipartition] = nvcomp::create_manager(compressed_buffer, streams[ipartition].value());
 
-      assert(output_bytes == expected_output_counts[ipartition] * sizeof(T));
+      nvcomp::DecompressionConfig config =
+        managers[ipartition]->configure_decompression(compressed_buffer);
 
-      nvcomp_temp_spaces[ipartition] =
-        rmm::device_buffer(nvcomp_temp_sizes[ipartition], streams[ipartition]);
-    }
+      assert(config.decomp_data_size == expected_output_counts[ipartition] * sizeof(T));
 
-    for (size_t ipartition = 0; ipartition < npartitions; ipartition++) {
-      if (expected_output_counts[ipartition] == 0) continue;
-
-      decompressors[ipartition]->decompress_async(compressed_data[ipartition],
-                                                  compressed_sizes[ipartition],
-                                                  nvcomp_temp_spaces[ipartition].data(),
-                                                  nvcomp_temp_sizes[ipartition],
-                                                  outputs[ipartition],
-                                                  expected_output_counts[ipartition] * sizeof(T),
-                                                  streams[ipartition].value());
+      managers[ipartition]->decompress(
+        static_cast<uint8_t *>(outputs[ipartition]), compressed_buffer, config);
     }
   }
 
@@ -262,17 +240,8 @@ struct cascaded_selector_functor {
   template <typename T, std::enable_if_t<is_cascaded_supported<T>::value> * = nullptr>
   nvcompCascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
   {
-    nvcompCascadedSelectorOpts selector_opts;
-    selector_opts.sample_size = 1024;
-    selector_opts.num_samples = 100;
-
-    nvcomp::CascadedSelector<T> selector(uncompressed_data, byte_len, selector_opts);
-
-    size_t temp_bytes = selector.get_temp_size();
-    rmm::device_buffer temp_space(temp_bytes);
-
-    double estimate_ratio;
-    return selector.select_config(temp_space.data(), temp_bytes, &estimate_ratio, 0);
+    // nvcomp >= 2.3 removed CascadedSelector, so the format is fixed instead of sampled.
+    return nvcompCascadedFormatOpts{.num_RLEs = 1, .num_deltas = 1, .use_bp = 1};
   }
 
   template <typename T, std::enable_if_t<is_time_t<T>::value> * = nullptr>

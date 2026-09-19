@@ -24,11 +24,14 @@
 
 #include <cudf/column/column.hpp>
 #include <cudf/concatenate.hpp>
+#include <cudf/copying.hpp>
+#include <cudf/utilities/span.hpp>
 #include <cudf/join.hpp>
 #include <cudf/partitioning.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/types.hpp>
+#include <rmm/device_uvector.hpp>
 #include <rmm/mr/device/device_memory_resource.hpp>
 #include <rmm/mr/device/per_device_resource.hpp>
 
@@ -76,10 +79,27 @@ static std::unique_ptr<table> local_join_helper(cudf::table_view left,
   if (left.num_rows() && right.num_rows()) {
     // Perform local join only when both left and right tables are not empty.
     // If either is empty, cuDF's inner join will return the other table, which is not desired.
-    return cudf::inner_join(left, right, left_on, right_on);
+    return inner_join_all_columns(left, right, left_on, right_on);
   }
 
   return std::make_unique<table>();
+}
+
+std::unique_ptr<table> inner_join_all_columns(cudf::table_view left,
+                                              cudf::table_view right,
+                                              vector<cudf::size_type> const &left_on,
+                                              vector<cudf::size_type> const &right_on)
+{
+  auto [left_map, right_map] = cudf::inner_join(left.select(left_on), right.select(right_on));
+
+  auto gathered_left = cudf::gather(
+    left, cudf::column_view(cudf::device_span<cudf::size_type const>(*left_map)));
+  auto gathered_right = cudf::gather(
+    right, cudf::column_view(cudf::device_span<cudf::size_type const>(*right_map)));
+
+  vector<std::unique_ptr<column>> columns = gathered_left->release();
+  for (auto &col : gathered_right->release()) { columns.push_back(std::move(col)); }
+  return std::make_unique<table>(std::move(columns));
 }
 
 /**

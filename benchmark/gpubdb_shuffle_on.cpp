@@ -137,7 +137,7 @@ void get_parquet_file_names(const char *folderpath,
   char file_name_bcast[max_file_name_length];
   for (int ifile = 0; ifile < num_input_files; ifile++) {
     if (mpi_rank == 0) {
-      strncpy(file_name_bcast, file_names[ifile].c_str(), max_file_name_length);
+      strncpy(file_name_bcast, file_names[ifile].c_str(), max_file_name_length - 1);
     }
 
     // Each file name is broadcasted to *file_name_bcast*, and then each worker rank adds it to

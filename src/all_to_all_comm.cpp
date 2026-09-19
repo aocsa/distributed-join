@@ -24,6 +24,7 @@
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_factories.hpp>
 #include <cudf/strings/detail/utilities.hpp>
+#include <cudf/utilities/default_stream.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/types.hpp>
@@ -429,7 +430,7 @@ void all_to_all_comm(vector<AllToAllCommBuffer> &all_to_all_comm_buffers,
       buffer.compressed_send_offsets, buffer.compressed_recv_offsets, comm_group, communicator);
 
     // Merge compressed data of all partitions in `compressed_buffers` into a single buffer
-    buffer.compressed_send_buffer.resize(buffer.compressed_send_offsets.back());
+    buffer.compressed_send_buffer.resize(buffer.compressed_send_offsets.back(), rmm::cuda_stream_default);
     for (int local_idx = 0; local_idx < comm_group_size; local_idx++) {
       if (!include_current_rank && comm_group.get_global_rank(local_idx) == mpi_rank) continue;
 
@@ -442,7 +443,7 @@ void all_to_all_comm(vector<AllToAllCommBuffer> &all_to_all_comm_buffers,
     compressed_buffers.clear();
 
     // Allocate receive buffer and launch all-to-all communication on the compressed buffer
-    buffer.compressed_recv_buffer.resize(buffer.compressed_recv_offsets.back());
+    buffer.compressed_recv_buffer.resize(buffer.compressed_recv_offsets.back(), rmm::cuda_stream_default);
     CUDA_RT_CALL(cudaStreamSynchronize(0));
 
     if (!communicator->group_by_batch()) communicator->start();
@@ -571,7 +572,9 @@ static std::unique_ptr<table> allocate_communicated_table_helper(
 
     if (dtype.id() == cudf::type_id::STRING) {
       std::unique_ptr<column> chars_column = cudf::strings::detail::create_chars_child_column(
-        recv_offsets.back(), 0, string_recv_offsets[icol].back());
+        string_recv_offsets[icol].back(),
+        cudf::get_default_stream(),
+        rmm::mr::get_current_device_resource());
       std::unique_ptr<column> offset_column =
         cudf::make_numeric_column(input_column.child(0).type(), recv_offsets.back() + 1);
 

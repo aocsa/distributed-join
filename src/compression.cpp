@@ -172,7 +172,7 @@ void warmup_nvcomp()
   using T = int;
 
   constexpr size_t warmup_size = 1000;
-  rmm::device_buffer input_data(warmup_size * sizeof(T));
+  rmm::device_buffer input_data(warmup_size * sizeof(T), rmm::cuda_stream_default);
 
   std::vector<rmm::device_buffer> compressed_data(1);
   size_t compressed_size;
@@ -186,7 +186,7 @@ void warmup_nvcomp()
                                       {rmm::cuda_stream_default},
                                       cascaded_format);
 
-  rmm::device_buffer decompressed_data(warmup_size * sizeof(T));
+  rmm::device_buffer decompressed_data(warmup_size * sizeof(T), rmm::cuda_stream_default);
 
   decompression_functor{}.operator()<T>({compressed_data[0].data()},
                                         {static_cast<int64_t>(compressed_size)},

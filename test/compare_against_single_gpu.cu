@@ -125,7 +125,7 @@ void run_test(cudf::size_type build_table_size,
     build_view = build->view();
     probe_view = probe->view();
 
-    reference = cudf::inner_join(build->view(), probe->view(), {0}, {0});
+    reference = inner_join_all_columns(build->view(), probe->view(), {0}, {0});
   }
 
   std::unique_ptr<table> local_build = distribute_table(build_view, communicator);

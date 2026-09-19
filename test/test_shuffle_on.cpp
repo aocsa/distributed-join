@@ -76,7 +76,7 @@ void run_test(int nrows_per_gpu, bool compression, Communicator *communicator)
   auto key_buffer                   = output_table->view().column(0).head<int>();
 
   if (num_rows_shuffled != 0) {
-    int mod_result = key_buffer[0] % communicator->mpi_size;
+    [[maybe_unused]] int mod_result = key_buffer[0] % communicator->mpi_size;
     for (cudf::size_type ielement = 0; ielement < num_rows_shuffled; ielement++) {
       assert(key_buffer[ielement] % communicator->mpi_size == mod_result);
     }

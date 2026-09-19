@@ -16,8 +16,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(distributed LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 find_package(CUDAToolkit REQUIRED)
@@ -27,6 +27,7 @@ find_package(UCX REQUIRED)
 find_package(NCCL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(NVCOMP REQUIRED)
+find_package(fmt REQUIRED)
 
 set(GPU_ARCHS ${GPU_ARCHS} "70;80")
 

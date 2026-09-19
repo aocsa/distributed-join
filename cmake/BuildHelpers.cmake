@@ -31,6 +31,8 @@ function(include_and_link_dependencies target_name)
   target_link_libraries(${target_name} PUBLIC MPI::MPI_CXX)
   target_link_libraries(${target_name} PUBLIC ${CUDF_LIBRARIES})
   target_link_libraries(${target_name} PUBLIC CUDA::cudart)
+  # rmm 23.08 headers log through spdlog, which needs the external fmt library at link time.
+  target_link_libraries(${target_name} PUBLIC fmt::fmt)
 
   target_compile_options(${target_name} PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
   target_compile_options(${target_name} PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--default-stream per-thread>)

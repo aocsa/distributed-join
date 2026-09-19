@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
 
   /* Send and recv data */
 
-  rmm::device_buffer send_buf{COUNT * sizeof(uint64_t), 0};
+  rmm::device_buffer send_buf{COUNT * sizeof(uint64_t), rmm::cuda_stream_default};
   std::vector<uint64_t *> recv_buf(mpi_size, nullptr);
 
   std::vector<comm_handle_t> send_reqs(mpi_size, nullptr);
@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
   for (int irank = 0; irank < mpi_size; irank++) {
     if (irank != mpi_rank) {
-      rmm::mr::get_current_device_resource()->deallocate(recv_buf[irank], COUNT, cudaStreamDefault);
+      rmm::mr::get_current_device_resource()->deallocate(recv_buf[irank], COUNT, rmm::cuda_stream_default);
     }
   }
 
