@@ -17,7 +17,7 @@
 #include "communicator.hpp"
 #include "error.hpp"
 
-#include <rmm/mr/device/per_device_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
 
 #include <mpi.h>
 #include <ucp/api/ucp.h>
@@ -180,7 +180,7 @@ comm_handle_t UCXCommunicator::recv(
 
   /* Allocate receive buffer */
 
-  *buf = rmm::mr::get_current_device_resource()->allocate(ucp_probe_info.length, rmm::cuda_stream_default);
+  *buf = rmm::mr::get_current_device_resource()->allocate(rmm::cuda_stream_default, ucp_probe_info.length);
   CUDA_RT_CALL(cudaStreamSynchronize(cudaStreamDefault));
 
   /* Received data */
@@ -364,7 +364,7 @@ void UCXBufferCommunicator::setup_cache(int64_t ncaches, int64_t buffer_size)
 {
   comm_buffer_size = buffer_size;
   cache_start_addr =
-    rmm::mr::get_current_device_resource()->allocate(comm_buffer_size * ncaches, rmm::cuda_stream_default);
+    rmm::mr::get_current_device_resource()->allocate(rmm::cuda_stream_default, comm_buffer_size * ncaches);
   CUDA_RT_CALL(cudaStreamSynchronize(cudaStreamDefault));
 
   register_buffer(cache_start_addr, comm_buffer_size * ncaches, &cache_mem_handle);
@@ -546,7 +546,7 @@ static void recv_handler(void *request, ucs_status_t status, ucp_tag_recv_info_t
   if (*(info->recv_buffer) == nullptr && *(info->count) > 0) {
     assert(info->ibatch == 0);
     *(info->recv_buffer) = rmm::mr::get_current_device_resource()->allocate(
-      *(info->count) * element_size, rmm::cuda_stream_default);
+      rmm::cuda_stream_default, *(info->count) * element_size);
     CUDA_RT_CALL(cudaStreamSynchronize(cudaStreamDefault));
   }
 
@@ -775,7 +775,7 @@ void UCXBufferCommunicator::finalize()
 {
   deregister_buffer(cache_mem_handle);
   rmm::mr::get_current_device_resource()->deallocate(
-    cache_start_addr, comm_buffer_size * buffer_cache.size(), rmm::cuda_stream_default);
+    rmm::cuda_stream_default, cache_start_addr, comm_buffer_size * buffer_cache.size());
   CUDA_RT_CALL(cudaStreamSynchronize(cudaStreamDefault));
   UCXCommunicator::finalize();
 }
@@ -825,7 +825,7 @@ void NCCLCommunicator::send(const void *buf, int64_t count, int element_size, in
   std::size_t aligned_size = (count * element_size + 255) / 256 * 256;
 
   comm_buffers.push_back(
-    rmm::mr::get_current_device_resource()->allocate(aligned_size, comm_stream));
+    rmm::mr::get_current_device_resource()->allocate(comm_stream, aligned_size));
   comm_buffer_sizes.push_back(count * element_size);
 
   CUDA_RT_CALL(cudaMemcpyAsync(
@@ -840,7 +840,7 @@ void NCCLCommunicator::recv(void *buf, int64_t count, int element_size, int sour
   recv_buffers.push_back(buf);
   recv_buffer_idx.push_back(comm_buffers.size());
   comm_buffers.push_back(
-    rmm::mr::get_current_device_resource()->allocate(aligned_size, comm_stream));
+    rmm::mr::get_current_device_resource()->allocate(comm_stream, aligned_size));
   comm_buffer_sizes.push_back(count * element_size);
 
   NCCL_CALL(ncclRecv(comm_buffers.back(), aligned_size, ncclChar, source, nccl_comm, comm_stream));
@@ -862,7 +862,7 @@ void NCCLCommunicator::stop()
   for (std::size_t ibuffer = 0; ibuffer < comm_buffers.size(); ibuffer++) {
     std::size_t aligned_size = (comm_buffer_sizes[ibuffer] + 255) / 256 * 256;
     rmm::mr::get_current_device_resource()->deallocate(
-      comm_buffers[ibuffer], aligned_size, comm_stream);
+      comm_stream, comm_buffers[ibuffer], aligned_size);
   }
 
   CUDA_RT_CALL(cudaStreamSynchronize(comm_stream));

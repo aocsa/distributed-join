@@ -23,6 +23,7 @@
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/hashing.hpp>
+#include <cudf/partitioning.hpp>
 #include <cudf/types.hpp>
 
 #include <memory>

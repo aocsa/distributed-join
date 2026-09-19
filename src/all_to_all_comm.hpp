@@ -152,7 +152,7 @@ struct AllToAllCommBuffer {
   // the compression method used
   CompressionMethod compression_method;
   // cascaded compression format
-  nvcompCascadedFormatOpts cascaded_format;
+  CascadedFormatOpts cascaded_format;
   // compressed `send_buffer` to be all-to-all communicated
   rmm::device_buffer compressed_send_buffer;
   // the receive buffer for the compressed data
@@ -170,7 +170,7 @@ struct AllToAllCommBuffer {
                      std::vector<int64_t> recv_offsets,
                      cudf::data_type dtype,
                      CompressionMethod compression_method,
-                     nvcompCascadedFormatOpts cascaded_format)
+                     CascadedFormatOpts cascaded_format)
     : send_buffer(send_buffer),
       recv_buffer(recv_buffer),
       send_offsets(send_offsets),

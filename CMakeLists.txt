@@ -16,20 +16,45 @@
 cmake_minimum_required(VERSION 3.18)
 project(distributed LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CUDA_STANDARD 20)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 find_package(CUDAToolkit REQUIRED)
+# CUDA 12.9's imported targets inject targets/*/include as -I, which shadows
+# conda CCCL 3.1. Treat those paths as system includes so include/cccl wins.
+foreach(_cuda_tgt CUDA::cudart CUDA::cudart_static CUDA::cuda_driver CUDA::nvrtc)
+  if(TARGET ${_cuda_tgt})
+    get_target_property(_cuda_inc ${_cuda_tgt} INTERFACE_INCLUDE_DIRECTORIES)
+    if(_cuda_inc)
+      set_property(TARGET ${_cuda_tgt} PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_cuda_inc}")
+    endif()
+  endif()
+endforeach()
+unset(_cuda_tgt)
+unset(_cuda_inc)
 find_package(CUDF REQUIRED)
-find_package(RMM REQUIRED)
+find_package(rmm CONFIG REQUIRED)
 find_package(UCX REQUIRED)
 find_package(NCCL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(NVCOMP REQUIRED)
-find_package(fmt REQUIRED)
+find_library(RAPIDS_LOGGER_LIBRARY rapids_logger REQUIRED)
 
-set(GPU_ARCHS ${GPU_ARCHS} "70;80")
+# rmm 25.12 needs CCCL's experimental memory_resource (normally pulled in by rmm::rmm).
+add_compile_definitions(LIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE)
+
+# CUDA 12.2 cannot emit sm_121 (GB10). 12.8+ can emit sm_120, 12.9+ sm_121.
+# Override with -DGPU_ARCHS=... if needed.
+if(NOT GPU_ARCHS)
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9)
+    set(GPU_ARCHS "80;90;120;121")
+  elseif(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+    set(GPU_ARCHS "80;90;120")
+  else()
+    set(GPU_ARCHS "70;80")
+  endif()
+endif()
 
 add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall>")
 add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Werror>")

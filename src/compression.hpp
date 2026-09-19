@@ -42,14 +42,21 @@
 
 enum class CompressionMethod { none, cascaded, lz4 };
 
+// nvCOMP 5 dropped nvcompCascadedFormatOpts; keep a POD for MPI broadcast.
+struct CascadedFormatOpts {
+  int num_RLEs{0};
+  int num_deltas{0};
+  int use_bp{0};
+};
+
 /* A structure outlining how to compress a column */
 struct ColumnCompressionOptions {
   CompressionMethod compression_method;
-  nvcompCascadedFormatOpts cascaded_format;
+  CascadedFormatOpts cascaded_format;
   std::vector<ColumnCompressionOptions> children_compression_options;
 
   ColumnCompressionOptions(CompressionMethod compression_method     = CompressionMethod::none,
-                           nvcompCascadedFormatOpts cascaded_format = {},
+                           CascadedFormatOpts cascaded_format = {},
                            std::vector<ColumnCompressionOptions> children_compression_options = {})
     : compression_method(compression_method),
       cascaded_format(cascaded_format),
@@ -89,16 +96,16 @@ struct compression_functor {
                   std::vector<rmm::device_buffer> &compressed_data,
                   size_t *compressed_sizes,
                   std::vector<rmm::cuda_stream_view> const &streams,
-                  nvcompCascadedFormatOpts cascaded_format)
+                  CascadedFormatOpts cascaded_format)
   {
     size_t npartitions = uncompressed_counts.size();
     compressed_data.resize(npartitions);
 
-    nvcompBatchedCascadedOpts_t opts = nvcompBatchedCascadedDefaultOpts;
-    opts.type                        = nvcomp::TypeOf<T>();
-    opts.num_RLEs                    = cascaded_format.num_RLEs;
-    opts.num_deltas                  = cascaded_format.num_deltas;
-    opts.use_bp                      = cascaded_format.use_bp;
+    nvcompBatchedCascadedCompressOpts_t opts = nvcompBatchedCascadedCompressDefaultOpts;
+    opts.type                                = nvcomp::TypeOf<T>();
+    opts.num_RLEs                            = cascaded_format.num_RLEs;
+    opts.num_deltas                          = cascaded_format.num_deltas;
+    opts.use_bp                              = cascaded_format.use_bp;
 
     // Managers are kept alive across both passes so compression on different streams can overlap.
     std::vector<std::unique_ptr<nvcomp::CascadedManager>> managers(npartitions);
@@ -109,8 +116,11 @@ struct compression_functor {
         continue;
       }
 
-      managers[ipartition] =
-        std::make_unique<nvcomp::CascadedManager>(opts, streams[ipartition].value());
+      managers[ipartition] = std::make_unique<nvcomp::CascadedManager>(
+        opts.internal_chunk_bytes,
+        opts,
+        nvcompBatchedCascadedDecompressDefaultOpts,
+        streams[ipartition].value());
 
       nvcomp::CompressionConfig config = managers[ipartition]->configure_compression(
         uncompressed_counts[ipartition] * sizeof(T));
@@ -139,7 +149,7 @@ struct compression_functor {
                   std::vector<rmm::device_buffer> &compressed_data,
                   size_t *compressed_sizes,
                   std::vector<rmm::cuda_stream_view> const &streams,
-                  nvcompCascadedFormatOpts cascaded_format)
+                  CascadedFormatOpts cascaded_format)
   {
     // If the data type is duration or time, use the corresponding arithmetic type
     operator()<typename T::rep>(uncompressed_data,
@@ -158,7 +168,7 @@ struct compression_functor {
                   std::vector<rmm::device_buffer> &compressed_data,
                   size_t *compressed_sizes,
                   std::vector<rmm::cuda_stream_view> const &streams,
-                  nvcompCascadedFormatOpts cascaded_format)
+                  CascadedFormatOpts cascaded_format)
   {
     throw std::runtime_error("Unsupported type for cascaded compressor");
   }
@@ -238,14 +248,14 @@ struct cascaded_selector_functor {
    * @returns Cascaded compression configuration options for *uncompressed_data*.
    */
   template <typename T, std::enable_if_t<is_cascaded_supported<T>::value> * = nullptr>
-  nvcompCascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
+  CascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
   {
     // nvcomp >= 2.3 removed CascadedSelector, so the format is fixed instead of sampled.
-    return nvcompCascadedFormatOpts{.num_RLEs = 1, .num_deltas = 1, .use_bp = 1};
+    return CascadedFormatOpts{.num_RLEs = 1, .num_deltas = 1, .use_bp = 1};
   }
 
   template <typename T, std::enable_if_t<is_time_t<T>::value> * = nullptr>
-  nvcompCascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
+  CascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
   {
     // If the data type is duration or time, use the corresponding arithmetic type
     return operator()<typename T::rep>(uncompressed_data, byte_len);
@@ -253,10 +263,10 @@ struct cascaded_selector_functor {
 
   template <typename T,
             std::enable_if_t<!is_cascaded_supported<T>::value && !is_time_t<T>::value> * = nullptr>
-  nvcompCascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
+  CascadedFormatOpts operator()(const void *uncompressed_data, size_t byte_len)
   {
     throw std::runtime_error("Unsupported type for CascadedSelector");
-    return nvcompCascadedFormatOpts();
+    return CascadedFormatOpts();
   }
 };
 

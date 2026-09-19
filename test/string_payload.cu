@@ -21,13 +21,14 @@
 
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_factories.hpp>
+#include <cudf/strings/strings_column_view.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/types.hpp>
-#include <cudf/utilities/span.hpp>
-#include <rmm/device_vector.hpp>
+#include <cudf/utilities/default_stream.hpp>
+#include <rmm/device_buffer.hpp>
 #include <rmm/exec_policy.hpp>
-#include <rmm/mr/device/managed_memory_resource.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
+#include <rmm/mr/managed_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
 
 #include <thrust/sequence.h>
 
@@ -36,6 +37,7 @@
 #include <cassert>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 /**
  * Generate an input table used for this test case.
@@ -58,9 +60,8 @@ std::unique_ptr<cudf::table> generate_table(cudf::size_type nelements_per_gpu,
     string_column_size += (current_value % 7 + 1);
   }
 
-  // Allocate buffers for the string column
-  rmm::device_vector<char> strings(string_column_size);
-  rmm::device_vector<cudf::size_type> offsets(nelements_per_gpu + 1);
+  std::vector<char> strings(string_column_size);
+  std::vector<cudf::size_type> offsets(nelements_per_gpu + 1);
 
   // Second pass, fill the string subcolumn
   cudf::size_type current_offset = 0;
@@ -69,15 +70,29 @@ std::unique_ptr<cudf::table> generate_table(cudf::size_type nelements_per_gpu,
     int current_size  = current_value % 7 + 1;
     char current_char = 'a' + current_value % 26;
     offsets[ielement] = current_offset;
-    memset(thrust::raw_pointer_cast(strings.data() + current_offset), current_char, current_size);
+    memset(strings.data() + current_offset, current_char, current_size);
     current_offset += current_size;
   }
 
   offsets[nelements_per_gpu] = current_offset;
 
-  // Construct the payload column
-  std::unique_ptr<cudf::column> payload_column = cudf::make_strings_column(
-    cudf::device_span<char const>(strings), cudf::device_span<cudf::size_type const>(offsets), {}, 0);
+  rmm::device_buffer chars_buffer(strings.size(), rmm::cuda_stream_default);
+  CUDA_RT_CALL(cudaMemcpy(
+    chars_buffer.data(), strings.data(), strings.size(), cudaMemcpyHostToDevice));
+
+  std::unique_ptr<cudf::column> offset_column = cudf::make_numeric_column(
+    cudf::data_type(cudf::type_id::INT32), nelements_per_gpu + 1);
+  CUDA_RT_CALL(cudaMemcpy(offset_column->mutable_view().head(),
+                          offsets.data(),
+                          offsets.size() * sizeof(cudf::size_type),
+                          cudaMemcpyHostToDevice));
+
+  std::unique_ptr<cudf::column> payload_column =
+    cudf::make_strings_column(nelements_per_gpu,
+                              std::move(offset_column),
+                              std::move(chars_buffer),
+                              0,
+                              rmm::device_buffer{});
 
   // Construct the key column
   std::unique_ptr<cudf::column> key_column =
@@ -101,8 +116,10 @@ inline void check_payload_correctness(cudf::column_view payload_column,
   cudf::size_type end_idx   = *(payload_column.child(0).begin<cudf::size_type>() + irow + 1);
   assert(end_idx - start_idx == key % 7 + 1);
 
+  cudf::strings_column_view sv(payload_column);
+  char const* chars = sv.chars_begin(cudf::get_default_stream());
   for (; start_idx < end_idx; start_idx++)
-    assert(*(payload_column.child(1).begin<char>() + start_idx) == 'a' + key % 26);
+    assert(*(chars + start_idx) == 'a' + key % 26);
 }
 
 void run_test(cudf::size_type nelements_per_gpu,
@@ -110,8 +127,8 @@ void run_test(cudf::size_type nelements_per_gpu,
               Communicator *communicator,
               int nvlink_domain_size)
 {
-  int mpi_rank = communicator->mpi_rank;
-  int mpi_size = communicator->mpi_size;
+  int mpi_rank                    = communicator->mpi_rank;
+  [[maybe_unused]] int mpi_size   = communicator->mpi_size;
 
   std::unique_ptr<cudf::table> left_table =
     generate_table(nelements_per_gpu, nelements_per_gpu * mpi_rank * 3, 3);

@@ -20,13 +20,14 @@
 #include "error.hpp"
 #include "registered_memory_resource.hpp"
 
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <mpi.h>
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -48,6 +49,27 @@ void set_cuda_device()
             << std::endl;
 }
 
+size_t recommended_rmm_pool_size(size_t reserve_bytes)
+{
+  size_t free_memory, total_memory;
+  CUDA_RT_CALL(cudaMemGetInfo(&free_memory, &total_memory));
+
+  size_t pool_size =
+    (reserve_bytes > 0 && reserve_bytes < free_memory) ? (free_memory - reserve_bytes)
+                                                       : (free_memory / 284 * 256);
+
+  int device = 0;
+  cudaDeviceProp prop{};
+  CUDA_RT_CALL(cudaGetDevice(&device));
+  CUDA_RT_CALL(cudaGetDeviceProperties(&prop, device));
+  // GB10 reports the full unified CPU/GPU RAM via cudaMemGetInfo. Leaving only
+  // 500MB (the old discrete-GPU heuristic) OOMs the box.
+  if (prop.integrated) { pool_size = std::min(pool_size, total_memory / 8); }
+  pool_size = pool_size / 256 * 256;
+
+  return pool_size;
+}
+
 void setup_memory_pool_and_communicator(
   Communicator *&communicator,
   registered_memory_resource *&registered_mr,
@@ -61,10 +83,7 @@ void setup_memory_pool_and_communicator(
 
   registered_mr = nullptr;
 
-  // Calculate the memory pool size
-  size_t free_memory, total_memory;
-  CUDA_RT_CALL(cudaMemGetInfo(&free_memory, &total_memory));
-  const size_t pool_size = free_memory / 284 * 256;
+  const size_t pool_size = recommended_rmm_pool_size();
 
   if (communicator_name == "NCCL") {
     communicator = new NCCLCommunicator;
@@ -90,7 +109,7 @@ void setup_memory_pool_and_communicator(
       communicator                      = ucx_communicator;
       registered_mr                     = new registered_memory_resource(ucx_communicator);
       pool_mr = new rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource>(
-        registered_mr, pool_size, pool_size);
+        *registered_mr, pool_size, pool_size);
       rmm::mr::set_current_device_resource(pool_mr);
     } else if (registration_method == "none") {
       communicator = initialize_ucx_communicator(false, 0, 0);

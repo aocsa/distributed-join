@@ -75,7 +75,7 @@ go through these buffers.
 
 #include <cudf/table/table.hpp>
 #include <cudf/types.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cuda_profiler_api.h>
 

@@ -14,11 +14,12 @@
 #
 
 find_path(RMM_INCLUDE_DIR NAMES rmm/device_buffer.hpp)
+find_library(RMM_LIBRARIES NAMES rmm REQUIRED)
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-find_package_handle_standard_args(RMM DEFAULT_MSG RMM_INCLUDE_DIR)
+find_package_handle_standard_args(RMM DEFAULT_MSG RMM_LIBRARIES RMM_INCLUDE_DIR)
 
 if (RMM_FOUND)
-  mark_as_advanced(RMM_INCLUDE_DIR)
+  mark_as_advanced(RMM_INCLUDE_DIR RMM_LIBRARIES)
   set(RMM_INCLUDE_DIRS ${RMM_INCLUDE_DIR})
 endif ()

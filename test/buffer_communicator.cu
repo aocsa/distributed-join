@@ -19,13 +19,14 @@
 #include "../src/setup.hpp"
 
 #include <rmm/device_buffer.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <mpi.h>
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -69,12 +70,10 @@ int main(int argc, char *argv[])
 
   /* Initialize memory pool */
 
-  size_t free_memory, total_memory;
-  CUDA_RT_CALL(cudaMemGetInfo(&free_memory, &total_memory));
-  const size_t pool_size = free_memory - 5LL * (1LL << 29);  // free memory - 500MB
+  const size_t pool_size = recommended_rmm_pool_size(5LL * (1LL << 29));  // reserve 500MB
 
   rmm::mr::device_memory_resource *mr = rmm::mr::get_current_device_resource();
-  rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource> pool_mr{mr, pool_size, pool_size};
+  rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource> pool_mr{*mr, pool_size, pool_size};
   rmm::mr::set_current_device_resource(&pool_mr);
 
   /* Initialize communicator */
@@ -133,7 +132,7 @@ int main(int argc, char *argv[])
 
   for (int irank = 0; irank < mpi_size; irank++) {
     if (irank != mpi_rank) {
-      rmm::mr::get_current_device_resource()->deallocate(recv_buf[irank], COUNT, rmm::cuda_stream_default);
+      rmm::mr::get_current_device_resource()->deallocate(rmm::cuda_stream_default, recv_buf[irank], COUNT);
     }
   }
 

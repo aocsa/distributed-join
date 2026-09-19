@@ -36,13 +36,13 @@ step 2.
 #include "../src/registered_memory_resource.hpp"
 #include "../src/setup.hpp"
 
-#include <cudf/join.hpp>
+#include <cudf/join/join.hpp>
 #include <cudf/sorting.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/types.hpp>
 #include <cudf/wrappers/timestamps.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cstdint>
 #include <iostream>

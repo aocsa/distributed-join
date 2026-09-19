@@ -1,0 +1,10 @@
+hostname: pdx02-zeno-01
+uname: Linux pdx02-zeno-01 6.14.0-1015-nvidia #15-Ubuntu SMP PREEMPT_DYNAMIC Tue Nov 25 18:02:16 UTC 2025 aarch64 aarch64 aarch64 GNU/Linux
+date_utc: 2026-09-19T21:38:43Z
+
+name, driver_version, compute_cap, vbios_version
+NVIDIA GB10, 580.126.09, 12.1, 9A.0B.0F.00.1D
+
+pixi: pixi 0.79.0
+git: git version 2.43.0
+bash: 5.2.21(1)-release

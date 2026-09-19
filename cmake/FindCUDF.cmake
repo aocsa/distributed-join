@@ -21,5 +21,5 @@ find_package_handle_standard_args(CUDF DEFAULT_MSG CUDF_LIBRARIES CUDF_INCLUDE_D
 
 if(CUDF_FOUND)
   mark_as_advanced(CUDF_INCLUDE_DIR CUDF_LIBRARIES)
-  set(CUDF_INCLUDE_DIRS ${CUDF_INCLUDE_DIR} ${CUDF_INCLUDE_DIR}/libcudf/libcudacxx)
+  set(CUDF_INCLUDE_DIRS ${CUDF_INCLUDE_DIR})
 endif()

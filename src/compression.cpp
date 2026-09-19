@@ -46,7 +46,7 @@ std::vector<ColumnCompressionOptions> generate_auto_select_compression_options(
 
       // offset subcolumn
       cudf::data_type offset_dtype = input_column.child(0).type();
-      nvcompCascadedFormatOpts offset_cascaded_opts =
+      CascadedFormatOpts offset_cascaded_opts =
         cudf::type_dispatcher(offset_dtype,
                               cascaded_selector_functor{},
                               input_column.child(0).head(),
@@ -57,9 +57,9 @@ std::vector<ColumnCompressionOptions> generate_auto_select_compression_options(
       children_options.emplace_back(CompressionMethod::none);
 
       compression_options.emplace_back(
-        CompressionMethod::none, nvcompCascadedFormatOpts(), children_options);
+        CompressionMethod::none, CascadedFormatOpts(), children_options);
     } else {
-      nvcompCascadedFormatOpts column_cascaded_opts =
+      CascadedFormatOpts column_cascaded_opts =
         cudf::type_dispatcher(dtype,
                               cascaded_selector_functor{},
                               input_column.head(),
@@ -85,7 +85,7 @@ std::vector<ColumnCompressionOptions> generate_none_compression_options(
       // char subcolumn
       children_options.emplace_back(CompressionMethod::none);
       compression_options.emplace_back(
-        CompressionMethod::none, nvcompCascadedFormatOpts(), children_options);
+        CompressionMethod::none, CascadedFormatOpts(), children_options);
     } else {
       compression_options.emplace_back(CompressionMethod::none);
     }
@@ -103,26 +103,32 @@ ColumnCompressionOptions broadcast_compression_options(cudf::column_view input_c
   cudf::data_type dtype = input_column.type();
 
   CompressionMethod compression_method     = input_options.compression_method;
-  nvcompCascadedFormatOpts cascaded_format = input_options.cascaded_format;
+  CascadedFormatOpts cascaded_format = input_options.cascaded_format;
   std::vector<ColumnCompressionOptions> children_compression_options;
 
   MPI_CALL(MPI_Bcast(&compression_method, sizeof(compression_method), MPI_CHAR, 0, MPI_COMM_WORLD));
   MPI_CALL(MPI_Bcast(&cascaded_format, sizeof(cascaded_format), MPI_CHAR, 0, MPI_COMM_WORLD));
 
   if (dtype.id() == cudf::type_id::STRING) {
-    ColumnCompressionOptions compression_options;
-
     if (mpi_rank == 0) {
-      // a string column should always contain two subcolumns
+      // Offsets still live in child(0); chars live in the parent data buffer.
       assert(input_options.children_compression_options.size() == 2);
     }
 
-    for (size_t icol = 0; icol < 2; icol++) {
-      if (mpi_rank == 0) { compression_options = input_options.children_compression_options[icol]; }
+    ColumnCompressionOptions offsets_options;
+    if (mpi_rank == 0) { offsets_options = input_options.children_compression_options[0]; }
+    children_compression_options.push_back(
+      broadcast_compression_options(input_column.child(0), offsets_options));
 
-      children_compression_options.push_back(
-        broadcast_compression_options(input_column.child(icol), compression_options));
+    CompressionMethod chars_method{};
+    CascadedFormatOpts chars_format{};
+    if (mpi_rank == 0) {
+      chars_method = input_options.children_compression_options[1].compression_method;
+      chars_format = input_options.children_compression_options[1].cascaded_format;
     }
+    MPI_CALL(MPI_Bcast(&chars_method, sizeof(chars_method), MPI_CHAR, 0, MPI_COMM_WORLD));
+    MPI_CALL(MPI_Bcast(&chars_format, sizeof(chars_format), MPI_CHAR, 0, MPI_COMM_WORLD));
+    children_compression_options.emplace_back(chars_method, chars_format);
   }
 
   return ColumnCompressionOptions(
@@ -177,7 +183,7 @@ void warmup_nvcomp()
   std::vector<rmm::device_buffer> compressed_data(1);
   size_t compressed_size;
 
-  nvcompCascadedFormatOpts cascaded_format = {.num_RLEs = 1, .num_deltas = 1, .use_bp = 1};
+  CascadedFormatOpts cascaded_format = {.num_RLEs = 1, .num_deltas = 1, .use_bp = 1};
 
   compression_functor{}.operator()<T>({input_data.data()},
                                       {warmup_size},

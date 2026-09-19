@@ -18,9 +18,9 @@
 #include "../src/error.hpp"
 #include "../src/setup.hpp"
 
-#include <rmm/mr/device/device_memory_resource.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/device_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
@@ -102,8 +102,8 @@ void run_all_to_all(int64_t size,
 
   for (int irank = 0; irank < mpi_size; irank++) {
     if (irank == mpi_rank) continue;
-    send_buffer[irank] = mr->allocate(size / mpi_size, rmm::cuda_stream_default);
-    recv_buffer[irank] = mr->allocate(size / mpi_size, rmm::cuda_stream_default);
+    send_buffer[irank] = mr->allocate(rmm::cuda_stream_default, size / mpi_size);
+    recv_buffer[irank] = mr->allocate(rmm::cuda_stream_default, size / mpi_size);
   }
 
   CUDA_RT_CALL(cudaStreamSynchronize(0));
@@ -144,8 +144,8 @@ void run_all_to_all(int64_t size,
   /* Deallocate send/recv buffers */
 
   for (int irank = 0; irank < mpi_rank; irank++) {
-    mr->deallocate(send_buffer[irank], size / mpi_size, rmm::cuda_stream_default);
-    mr->deallocate(recv_buffer[irank], size / mpi_size, rmm::cuda_stream_default);
+    mr->deallocate(rmm::cuda_stream_default, send_buffer[irank], size / mpi_size);
+    mr->deallocate(rmm::cuda_stream_default, recv_buffer[irank], size / mpi_size);
   }
 
   CUDA_RT_CALL(cudaStreamSynchronize(0));

@@ -19,6 +19,7 @@
 #include "../src/error.hpp"
 #include "nvtx_helper.cuh"
 
+#include <rmm/device_vector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/distance.h>
@@ -31,7 +32,10 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
+#include <algorithm>
 #include <cassert>
+#include <limits>
+#include <type_traits>
 
 /* redefine atomic compare and swap with signed type */
 __device__ __inline__ int64_t atomicCAS(int64_t* address, int64_t compare, int64_t val)
@@ -245,7 +249,7 @@ void generate_input_tables(key_type* const build_tbl,
                                                  build_tbl_sorted.end(),
                                                  lottery.data().get());
 
-  lottery_size = thrust::distance(lottery.data().get(), lottery_end);
+  lottery_size = static_cast<size_type>(lottery_end - lottery.data().get());
 
   init_probe_tbl<key_type, size_type>
     <<<num_sms * num_blocks_init_build_tbl, block_size>>>(probe_tbl,

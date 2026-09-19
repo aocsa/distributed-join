@@ -19,13 +19,23 @@
 #include "communicator.hpp"
 #include "registered_memory_resource.hpp"
 
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
 void set_cuda_device();
+
+/**
+ * Size the RMM pool from currently free GPU memory.
+ *
+ * On discrete GPUs this is ~90% of free memory (or free minus *reserve_bytes*
+ * when that argument is set). On unified-memory SoCs (GB10 / DGX Spark) the
+ * pool is capped so the CPU and OS keep RAM.
+ */
+size_t recommended_rmm_pool_size(size_t reserve_bytes = 0);
 
 /**
  * Setup RMM memory pool and communicator.

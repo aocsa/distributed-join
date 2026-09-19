@@ -22,12 +22,12 @@
 
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_factories.hpp>
-#include <cudf/join.hpp>
+#include <cudf/join/join.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/types.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include <thrust/execution_policy.h>
 #include <thrust/sequence.h>
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
   const size_t pool_size = 960'000'000;  // 960MB
 
   rmm::mr::device_memory_resource *mr = rmm::mr::get_current_device_resource();
-  rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource> pool_mr{mr, pool_size, pool_size};
+  rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource> pool_mr{*mr, pool_size, pool_size};
   rmm::mr::set_current_device_resource(&pool_mr);
 
   /* Initialize communicator */

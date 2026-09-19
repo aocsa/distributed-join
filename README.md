@@ -17,23 +17,26 @@ The following plot shows the weak-scaling performance when joining the `l_orderk
 
 ## Compilation
 
-This project depends on CUDA 12, UCX, NCCL, MPI, cuDF 23.08 and nvcomp 2.6.
+This project depends on CUDA 12.9, UCX, NCCL, MPI, cuDF 25.12 and nvCOMP 5.
 
-To compile, make sure the variables `CUDA_ROOT`, `CUDF_ROOT`, `MPI_ROOT`, `UCX_ROOT`, `NCCL_ROOT` and `NVCOMP_ROOT` are pointing to the installation path of CUDA, cuDF, MPI, UCX, NCCL and nvcomp repectively.
+### Reproduce on a new NVIDIA box
 
-[The wiki page](https://github.com/rapidsai/distributed-join/wiki/How-to-compile-and-run-the-code) contains step-by-step instructions for setting up the environment.
+On a machine that already has an NVIDIA driver, git, and curl:
 
-To compile, run
 ```bash
-mkdir build && cd build
-cmake ..
-make -j
+curl -fsSL https://raw.githubusercontent.com/aocsa/distributed-join/pixi-cuda12-rapids2512/repro/bootstrap.sh | bash
 ```
 
-### Using pixi
+That clones branch `pixi-cuda12-rapids2512`, installs the pixi environment from
+`pixi.lock`, builds, and runs the tests. Details, env pins, and port notes are in
+[`repro/`](repro/README.md).
 
-`pixi.toml` describes a self-contained build environment (CUDA 12.2 toolkit, GCC 12, libcudf and librmm 23.08, nvCOMP 2.6, NCCL, UCX, Open MPI, CMake) from conda-forge and rapidsai. Install [pixi](https://pixi.sh), then:
+### Using pixi (existing clone)
+
+`pixi.toml` describes a self-contained build environment (CUDA 12.9 toolkit, GCC 14, libcudf and librmm 25.12, nvCOMP 5, NCCL, UCX, Open MPI, CMake) from conda-forge and rapidsai, for both `linux-64` and `linux-aarch64` (GB10 / DGX Spark). Install [pixi](https://pixi.sh), then:
 ```bash
+pixi install
+porting/patch_nvcc_activate.sh
 pixi run build
 ```
 Binaries end up in `build/bin/benchmark` and `build/bin/test`. To run them, activate the environment first with `pixi shell`.

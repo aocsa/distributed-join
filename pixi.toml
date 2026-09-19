@@ -1,25 +1,31 @@
 [workspace]
 name = "distributed-join"
 channels = ["rapidsai", "conda-forge", "nvidia"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "linux-aarch64"]
 
-# RAPIDS 23.08 is the oldest release with CUDA 12 builds and the last whose rmm/cudf APIs are
-# close to the cuDF 0.19 this code was written against. Its nvcc (12.2) supports at most GCC 12.
+# RAPIDS 23.08 has CUDA 12 only on linux-64. 23.12 adds aarch64 CUDA 12 but its
+# libcudf fatbins stop at sm_90 with no PTX, so they cannot run on GB10 (sm_121).
+# 25.12 is built with CUDA 12.9 and includes sm_120 cubin + PTX (binary-compatible
+# with GB10). nvcc 12.9 can also emit sm_121 for this project's kernels.
+# CCCL is pinned to 3.1 (RAPIDS 25.12); do not use cuda-cccl 12.9 (CCCL 2.8).
 [dependencies]
 cmake = ">=3.26"
 ninja = "*"
 cxx-compiler = "*"
-gxx = "12.*"
-cuda-version = "12.2.*"
-cuda-nvcc = "12.2.*"
-cuda-cudart-dev = "12.2.*"
-cuda-nvrtc-dev = "12.2.*"
-cuda-cccl = "12.2.*"
-cuda-profiler-api = "12.2.*"
+gxx = "14.*"
+cuda-version = "12.9.*"
+cuda-nvcc = "12.9.*"
+cuda-cudart-dev = "12.9.*"
+cuda-nvrtc-dev = "12.9.*"
+# RAPIDS 25.12 needs CCCL 3.1 (cuda::mr::synchronous_resource). cuda-cccl 12.9
+# pins CCCL 2.8 and shadows those headers; the toolkit still ships 2.8 under
+# targets/*/include, so conda include must be searched first.
+cccl = "3.1.*"
+cuda-profiler-api = "12.9.*"
 libcurand-dev = "*"
-libcudf = "23.08.*"
-librmm = "23.08.*"
-nvcomp = "2.6.1.*"
+libcudf = "25.12.*"
+librmm = "25.12.*"
+libnvcomp-dev = "5.0.*"
 nccl = "*"
 ucx = "*"
 openmpi = "*"

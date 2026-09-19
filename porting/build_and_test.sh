@@ -5,7 +5,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 RANKS="${1:-2}"
 
+# cuda-nvcc's activate script dies under `set -u` if NVCC_PREPEND_FLAGS is unset.
+porting/patch_nvcc_activate.sh
+set +u
 eval "$(pixi shell-hook)"
+set -u
 export UCX_WARN_UNUSED_ENV_VARS=n
 
 rm -rf build

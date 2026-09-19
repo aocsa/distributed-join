@@ -23,7 +23,7 @@
 
 #include <cudf/column/column.hpp>
 #include <cudf/column/column_factories.hpp>
-#include <cudf/strings/detail/utilities.hpp>
+#include <cudf/strings/strings_column_view.hpp>
 #include <cudf/utilities/default_stream.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/table/table_view.hpp>
@@ -33,8 +33,8 @@
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
-#include <rmm/mr/device/device_memory_resource.hpp>
-#include <rmm/mr/device/per_device_resource.hpp>
+#include <rmm/mr/device_memory_resource.hpp>
+#include <rmm/mr/per_device_resource.hpp>
 
 #include <mpi.h>
 
@@ -203,8 +203,8 @@ void warmup_all_to_all(Communicator *communicator)
 
   for (int irank = 0; irank < mpi_size; irank++) {
     if (irank == mpi_rank) continue;
-    send_buffer[irank] = mr->allocate(size / mpi_size, rmm::cuda_stream_default);
-    recv_buffer[irank] = mr->allocate(size / mpi_size, rmm::cuda_stream_default);
+    send_buffer[irank] = mr->allocate(rmm::cuda_stream_default, size / mpi_size);
+    recv_buffer[irank] = mr->allocate(rmm::cuda_stream_default, size / mpi_size);
   }
 
   CUDA_RT_CALL(cudaStreamSynchronize(0));
@@ -226,8 +226,8 @@ void warmup_all_to_all(Communicator *communicator)
   /* Deallocate send/recv buffers */
 
   for (int irank = 0; irank < mpi_rank; irank++) {
-    mr->deallocate(send_buffer[irank], size / mpi_size, rmm::cuda_stream_default);
-    mr->deallocate(recv_buffer[irank], size / mpi_size, rmm::cuda_stream_default);
+    mr->deallocate(rmm::cuda_stream_default, send_buffer[irank], size / mpi_size);
+    mr->deallocate(rmm::cuda_stream_default, recv_buffer[irank], size / mpi_size);
   }
 
   CUDA_RT_CALL(cudaStreamSynchronize(0));
@@ -271,11 +271,11 @@ void append_to_all_to_all_comm_buffers(
         compression_options[icol].children_compression_options[0].cascaded_format);
 
       all_to_all_comm_buffers.emplace_back(
-        input.column(icol).child(1).head(),
-        output.column(icol).child(1).head(),
+        input.column(icol).head(),
+        output.column(icol).head(),
         vector<int64_t>(string_send_offsets[icol].begin(), string_send_offsets[icol].end()),
         string_recv_offsets[icol],
-        input.column(icol).child(1).type(),
+        cudf::data_type{cudf::type_id::INT8},
         compression_options[icol].children_compression_options[1].compression_method,
         compression_options[icol].children_compression_options[1].cascaded_format);
     }
@@ -571,15 +571,16 @@ static std::unique_ptr<table> allocate_communicated_table_helper(
     cudf::data_type dtype          = input_column.type();
 
     if (dtype.id() == cudf::type_id::STRING) {
-      std::unique_ptr<column> chars_column = cudf::strings::detail::create_chars_child_column(
-        string_recv_offsets[icol].back(),
-        cudf::get_default_stream(),
-        rmm::mr::get_current_device_resource());
+      rmm::device_buffer chars_buffer(string_recv_offsets[icol].back(),
+                                      cudf::get_default_stream());
       std::unique_ptr<column> offset_column =
         cudf::make_numeric_column(input_column.child(0).type(), recv_offsets.back() + 1);
 
-      communicated_columns.push_back(cudf::make_strings_column(
-        recv_offsets.back(), std::move(offset_column), std::move(chars_column), 0, {}));
+      communicated_columns.push_back(cudf::make_strings_column(recv_offsets.back(),
+                                                               std::move(offset_column),
+                                                               std::move(chars_buffer),
+                                                               0,
+                                                               rmm::device_buffer{}));
     } else {
       communicated_columns.push_back(cudf::make_fixed_width_column(dtype, recv_offsets.back()));
     }
@@ -646,9 +647,10 @@ static void copy_table_to_current_rank(
         cudaMemcpyDeviceToDevice));
 
       CUDA_RT_CALL(cudaMemcpy(
-        communicated_table.column(icol).child(1).head<char>() +
+        static_cast<char *>(communicated_table.column(icol).head()) +
           string_recv_offsets[icol][local_idx],
-        input_table.column(icol).child(1).head<char>() + string_send_offsets[icol][local_idx],
+        static_cast<char const *>(input_table.column(icol).head()) +
+          string_send_offsets[icol][local_idx],
         string_send_offsets[icol][local_idx + 1] - string_send_offsets[icol][local_idx],
         cudaMemcpyDeviceToDevice));
     }

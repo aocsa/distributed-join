@@ -21,8 +21,10 @@
 #include <nvcomp/cascaded.hpp>
 
 #include <cudf/column/column_view.hpp>
+#include <cudf/strings/strings_column_view.hpp>
 #include <cudf/table/table_view.hpp>
 #include <cudf/types.hpp>
+#include <cudf/utilities/default_stream.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -42,7 +44,7 @@ inline int64_t calculate_table_size(cudf::table_view input_table)
       table_size += (cudf::size_of(dtype) * current_column.size());
     } else {
       assert(dtype.id() == cudf::type_id::STRING);
-      table_size += current_column.child(1).size();
+      table_size += cudf::strings_column_view(current_column).chars_size(cudf::get_default_stream());
     }
   }
 
@@ -52,7 +54,7 @@ inline int64_t calculate_table_size(cudf::table_view input_table)
 inline void print_compression_options(std::vector<ColumnCompressionOptions> &compression_options)
 {
   for (size_t icol = 0; icol < compression_options.size(); icol++) {
-    nvcompCascadedFormatOpts format = compression_options[icol].cascaded_format;
+    CascadedFormatOpts format = compression_options[icol].cascaded_format;
     std::cout << "Column " << icol << " RLE=" << format.num_RLEs << ", Delta=" << format.num_deltas
               << ", Bitpack=" << format.use_bp << std::endl;
   }
