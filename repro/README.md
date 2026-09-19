@@ -87,6 +87,9 @@ librmm, nvCOMP, NCCL, UCX, and Open MPI into `./.pixi`.
 | Path | Purpose |
 |---|---|
 | `repro/bootstrap.sh` | Fresh-box entry: preflight, clone, install, patch, build, test |
+| `repro/ZENO02_STANDBY_PROMPT.md` | Paste into the zeno-02 agent so it authorizes SSH and stays idle |
+| `repro/run_two_nodes.sh` | 1 rank/node mpirun: shuffle smoke then 1M-row join (launch from zeno-01) |
+| `repro/hosts.zeno01-zeno02` | Hostfile: 10.87.131.64 (zeno-01) and 10.87.131.68 (zeno-02) |
 | `repro/check_box.sh` | Preflight only (driver, arch, disk) |
 | `repro/capture_env.sh` | Dump host + `pixi list` for debugging a failed box |
 | `repro/NOTES.md` | Why 25.12, source changes, pitfalls |
