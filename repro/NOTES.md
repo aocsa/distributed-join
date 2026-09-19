@@ -65,7 +65,11 @@ and `rmm::rmm`.
 - Do **not** put empty `NVCC_PREPEND_FLAGS` in `[activation.env]`: pixi applies
   that **after** `activate.d` and would wipe `-ccbin=$CXX`.
 - `eval "$(pixi shell-hook)"` must run under `set +u`. hwloc bash-completion
-  references `ZSH_VERSION`.
+  references `ZSH_VERSION`. If `pixi` is missing, that `eval` can succeed with
+  an empty hook and CMake will pick `/usr/local/cuda` (13.x on GB10 boxes).
+  `porting/build_and_test.sh` prepends `~/.pixi/bin` and refuses a non-pixi nvcc.
+- After `curl … | bash` for pixi, the current shell still lacks `~/.pixi/bin`
+  until you `source ~/.bashrc` or export that PATH.
 - Re-run the nvcc patch after every `pixi install` (it rewrites `.pixi/`, which
   is gitignored).
 - Do not export `UCX_ROOT`; UCX treats every `UCX_*` variable as its own.

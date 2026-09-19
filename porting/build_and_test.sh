@@ -5,11 +5,29 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 RANKS="${1:-2}"
 
+# install.sh puts pixi in ~/.pixi/bin and edits .bashrc; an already-open shell
+# will not see it. Do not fall through to /usr/local/cuda (GB10 images often
+# ship CUDA 13.x).
+if ! command -v pixi >/dev/null 2>&1 && [[ -x "${HOME}/.pixi/bin/pixi" ]]; then
+  export PATH="${HOME}/.pixi/bin:${PATH}"
+fi
+if ! command -v pixi >/dev/null 2>&1; then
+  echo "pixi not found. Install it, then source ~/.bashrc or:" >&2
+  echo "  export PATH=\"\$HOME/.pixi/bin:\$PATH\"" >&2
+  exit 1
+fi
+
 # cuda-nvcc's activate script dies under `set -u` if NVCC_PREPEND_FLAGS is unset.
 porting/patch_nvcc_activate.sh
 set +u
 eval "$(pixi shell-hook)"
 set -u
+nvcc_path="$(command -v nvcc || true)"
+if [[ "${nvcc_path}" != *".pixi"* ]]; then
+  echo "refusing to build with nvcc=${nvcc_path:-missing}; expected pixi CUDA 12.9" >&2
+  echo "pixi shell-hook did not activate ./.pixi (do not use /usr/local/cuda)." >&2
+  exit 1
+fi
 export UCX_WARN_UNUSED_ENV_VARS=n
 
 rm -rf build

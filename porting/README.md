@@ -21,13 +21,12 @@ clone of this branch:
 repro/bootstrap.sh
 ```
 
-or the individual steps:
+or the individual steps (install pixi first, then):
 
 ```bash
-pixi install
-porting/patch_nvcc_activate.sh
-pixi run build
-porting/build_and_test.sh 2
+export PATH="$HOME/.pixi/bin:$PATH"   # if this shell predates install.sh
+pixi install                         # from pixi.lock
+porting/build_and_test.sh 2          # nvcc patch, clean build, e2e tests
 ```
 
 If `pixi install` fails with `unsupported-platform` / `linux-aarch64`, the lockfile

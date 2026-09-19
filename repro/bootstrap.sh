@@ -42,9 +42,17 @@ if [[ -n "$avail_kb" ]] && (( avail_kb < 8 * 1024 * 1024 )); then
 fi
 
 if ! command -v pixi >/dev/null 2>&1; then
-  echo "=== installing pixi ==="
-  curl -fsSL https://pixi.sh/install.sh | bash
-  export PATH="${HOME}/.pixi/bin:${PATH}"
+  if [[ -x "${HOME}/.pixi/bin/pixi" ]]; then
+    export PATH="${HOME}/.pixi/bin:${PATH}"
+  else
+    echo "=== installing pixi ==="
+    curl -fsSL https://pixi.sh/install.sh | bash
+    export PATH="${HOME}/.pixi/bin:${PATH}"
+  fi
+fi
+if ! command -v pixi >/dev/null 2>&1; then
+  echo "pixi not on PATH after install. Try: export PATH=\"\$HOME/.pixi/bin:\$PATH\"" >&2
+  exit 1
 fi
 echo "pixi $(pixi --version)"
 

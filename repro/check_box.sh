@@ -30,6 +30,9 @@ else
   nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv || fail=1
 fi
 
+if ! command -v pixi >/dev/null 2>&1 && [[ -x "${HOME}/.pixi/bin/pixi" ]]; then
+  export PATH="${HOME}/.pixi/bin:${PATH}"
+fi
 if command -v pixi >/dev/null 2>&1; then
   echo "pixi: $(pixi --version) ($(command -v pixi))"
 else

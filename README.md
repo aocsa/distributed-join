@@ -15,28 +15,58 @@ The following plot shows the weak-scaling performance when joining the `l_orderk
 
 ![weak scaling performance](/doc/tpch_perf.svg)
 
-## Compilation
+## Build and e2e tests
 
-This project depends on CUDA 12.9, UCX, NCCL, MPI, cuDF 25.12 and nvCOMP 5.
+The committed `pixi.lock` is RAPIDS 25.12 + CUDA 12.9 + GCC 14 + CCCL 3.1 + nvCOMP 5
+for `linux-64` and `linux-aarch64` (GB10 / DGX Spark). Pixi puts that stack in
+`./.pixi` (~6 GiB). Do **not** install a system CUDA toolkit and do not run bare
+`cmake` against `/usr/local/cuda` (GB10 images often ship CUDA 13).
 
-### Reproduce on a new NVIDIA box
+### 1. Install on the box first
 
-On a machine that already has an NVIDIA driver, git, and curl:
+These are the only host packages. Everything else comes from pixi.
+
+| You provide | Why |
+|---|---|
+| NVIDIA driver (`nvidia-smi`) | Kernel driver; GB10 on this port used 580.126.09 |
+| git, curl | Clone + pixi installer |
+| ~8 GiB free disk | pixi env + build tree |
+| `x86_64` or `aarch64` | Declared pixi platforms |
+
+Then install [pixi](https://pixi.sh) **once**:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+export PATH="$HOME/.pixi/bin:$PATH"
+```
+
+`install.sh` edits `~/.bashrc`. An already-open shell still needs that `export`
+(or `source ~/.bashrc`) or `pixi` is not found and CMake will pick `/usr/local/cuda`.
+
+### 2. Run the e2e tests
+
+From a checkout of branch `pixi-cuda12-rapids2512`:
+
+```bash
+export PATH="$HOME/.pixi/bin:$PATH"
+pixi install                      # from pixi.lock; do not pixi update
+porting/build_and_test.sh 2       # nvcc patch, clean build, MPI tests
+```
+
+`porting/build_and_test.sh` is the e2e entry. It refuses a non-pixi `nvcc`, rebuilds
+in the env, then runs:
+
+- `buffer_communicator` and `benchmark/distributed_join` at **1 rank** (each sizes
+  the RMM pool to most of free GPU memory)
+- `test_shuffle_on`, `compare_against_single_gpu`, `compare_against_analytical`,
+  `string_payload` at **2 ranks** (`mpirun --oversubscribe`)
+
+Success is the line `ALL DONE`. Compile only: `SKIP_TESTS=1 repro/bootstrap.sh`.
+
+Empty machine (installs pixi, clones this branch, then the same e2e):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aocsa/distributed-join/pixi-cuda12-rapids2512/repro/bootstrap.sh | bash
 ```
 
-That clones branch `pixi-cuda12-rapids2512`, installs the pixi environment from
-`pixi.lock`, builds, and runs the tests. Details, env pins, and port notes are in
-[`repro/`](repro/README.md).
-
-### Using pixi (existing clone)
-
-`pixi.toml` describes a self-contained build environment (CUDA 12.9 toolkit, GCC 14, libcudf and librmm 25.12, nvCOMP 5, NCCL, UCX, Open MPI, CMake) from conda-forge and rapidsai, for both `linux-64` and `linux-aarch64` (GB10 / DGX Spark). Install [pixi](https://pixi.sh), then:
-```bash
-pixi install
-porting/patch_nvcc_activate.sh
-pixi run build
-```
-Binaries end up in `build/bin/benchmark` and `build/bin/test`. To run them, activate the environment first with `pixi shell`.
+Pins, traps, and env snapshots: [`repro/README.md`](repro/README.md).

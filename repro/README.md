@@ -36,27 +36,38 @@ bash repro/bootstrap.sh
 
 Set `SKIP_TESTS=1` to stop after a successful build.
 
-## Already cloned this branch
+## Clone or existing checkout
+
+Install on the box first (driver, git, curl, then pixi). Do not install a system
+CUDA toolkit.
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+export PATH="$HOME/.pixi/bin:$PATH"   # this shell; install.sh only updates ~/.bashrc
+```
+
+New clone:
 
 ```bash
 git clone --branch pixi-cuda12-rapids2512 https://github.com/aocsa/distributed-join.git
 cd distributed-join
 repro/check_box.sh
-repro/bootstrap.sh          # detects the existing checkout
+repro/bootstrap.sh          # pixi install from lockfile, patch, e2e tests
 ```
 
-Or the individual steps:
+Already sitting in this repo: `repro/bootstrap.sh` (it will not nest another clone).
+
+Or the same e2e by hand:
 
 ```bash
-pixi install
-porting/patch_nvcc_activate.sh   # required after every pixi install
-pixi run build
-porting/build_and_test.sh 2
+export PATH="$HOME/.pixi/bin:$PATH"
+pixi install                      # from pixi.lock; do not pixi update
+porting/build_and_test.sh 2       # nvcc nounset patch, clean build, MPI tests
 ```
 
+`porting/build_and_test.sh` runs `porting/patch_nvcc_activate.sh` for you.
 `pixi run build` **will fail** with `NVCC_PREPEND_FLAGS: unbound variable` unless
-the patch has been applied. `repro/bootstrap.sh` and `porting/build_and_test.sh`
-run the patch for you.
+that patch has been applied. Success is the line `ALL DONE`.
 
 ## What this box must provide
 
