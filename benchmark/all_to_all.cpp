@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 
+// --communicator can be UCX (default), NCCL, or NIXL. MPI is always the launcher.
 static int REPEAT                           = 4;
 static std::string COMMUNICATOR_NAME        = "UCX";
 static std::string REGISTRATION_METHOD      = "preregistered";

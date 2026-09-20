@@ -89,7 +89,12 @@ librmm, nvCOMP, NCCL, UCX, and Open MPI into `./.pixi`.
 | `repro/bootstrap.sh` | Fresh-box entry: preflight, clone, install, patch, build, test |
 | `repro/ZENO02_STANDBY_PROMPT.md` | Paste into the zeno-02 agent so it authorizes SSH and stays idle |
 | `repro/run_two_nodes.sh` | 1 rank/node mpirun: shuffle smoke then 1M-row join (launch from zeno-01) |
+| `repro/RUN_TWO_NODES.md` | Step-by-step two-terminal build/sync/run guide for zeno-01 + zeno-02 |
+| `repro/NIXL_NCCL_STATUS.md` | NCCL vs NIXL handoff: numbers, design, E1–E5, how to continue |
 | `repro/hosts.zeno01-zeno02` | Hostfile: 10.87.131.64 (zeno-01) and 10.87.131.68 (zeno-02) |
+| `repro/sync_nixl_zeno02.py` | rsync NIXL prefix + `build/` to zeno-02 (homes are not shared) |
+| `repro/compare_communicators.sh` | 1 warmup + 3 timed NCCL/NIXL/UCX all_to_all + join |
+| `repro/compare_join_shuffle.sh` | 1 warmup + 3 timed NCCL/UCX/NIXL/NIXL-host join + shuffle test |
 | `repro/check_box.sh` | Preflight only (driver, arch, disk) |
 | `repro/capture_env.sh` | Dump host + `pixi list` for debugging a failed box |
 | `repro/NOTES.md` | Why 25.12, source changes, pitfalls |

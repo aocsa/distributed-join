@@ -18,6 +18,7 @@
 
 #include "communicator.hpp"
 #include "error.hpp"
+#include "nixl_communicator.hpp"
 #include "registered_memory_resource.hpp"
 
 #include <rmm/mr/per_device_resource.hpp>
@@ -28,6 +29,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -91,6 +93,22 @@ void setup_memory_pool_and_communicator(
     pool_mr = new rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource>(
       rmm::mr::get_current_device_resource(), pool_size, pool_size);
     rmm::mr::set_current_device_resource(pool_mr);
+  } else if (communicator_name == "NIXL") {
+    auto *nixl_communicator = new NIXLCommunicator;
+    communicator            = nixl_communicator;
+    nixl_communicator->initialize();
+    // Pinned host pages and the NIC's ibv_reg_mr of the same pool both count against
+    // RLIMIT_MEMLOCK (~15 GiB on the zeno boxes, not raisable), so the pool must stay under half.
+    size_t nixl_pool_size = pool_size;
+    if (nixl_communicator->host_pool) {
+      char const *gib  = std::getenv("NIXL_HOST_POOL_GIB");
+      size_t const cap = (gib ? std::strtoull(gib, nullptr, 10) : size_t{6}) << 30;
+      nixl_pool_size   = std::min(pool_size, cap);
+    }
+    pool_mr = new rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource>(
+      nixl_communicator->memory_resource(), nixl_pool_size, nixl_pool_size);
+    rmm::mr::set_current_device_resource(pool_mr);
+    nixl_communicator->publish_registered_memory();
   } else if (communicator_name == "UCX") {
     if (registration_method == "buffer") {
       // For UCX with buffer communicator, a memory pool is first constructed so that the

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)",
+      "Read(//sys/class/infiniband/**)",
+      "Bash(mpirun --version)",
+      "Bash(ucx_info -v)",
+      "Bash(nvcc --version)",
+      "Bash(ldconfig -p)",
+      "Bash(getent hosts *)",
+      "Bash(ping -c1 -W2 zeno-02)",
+      "Bash(nvidia-smi --query-gpu=compute_cap,memory.total,driver_version --format=csv,noheader)",
+      "Read(//home/aocsa/**)",
+      "Bash(conda env *)",
+      "Bash(python3 -c \"import cudf; print\\('cudf', cudf.__version__\\)\")",
+      "Bash(ibv_devinfo)",
+      "Bash(~/miniforge3/envs/bsql-25.12/bin/python -c \"import cudf; print\\(cudf.__version__\\)\")",
+      "Bash(cat repro/compare_communicators.sh)",
+      "Bash(cat repro/run_two_nodes.sh)",
+      "Bash(cat repro/sync_nixl_zeno02.py)"
+    ]
+  }
+}

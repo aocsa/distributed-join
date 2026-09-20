@@ -31,15 +31,18 @@
 #include <cudf/column/column_factories.hpp>
 #include <cudf/table/table.hpp>
 #include <cudf/types.hpp>
-#include <rmm/mr/managed_memory_resource.hpp>
-#include <rmm/mr/per_device_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
+
+#include <cuda_runtime.h>
 
 #include <mpi.h>
 
-#include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -51,10 +54,12 @@ std::unique_ptr<table> generate_table(cudf::size_type size)
   std::vector<std::unique_ptr<column>> columns;
 
   auto key_column = cudf::make_numeric_column(cudf::data_type(cudf::type_id::INT32), size);
-  auto key_buffer = key_column->mutable_view().head<int>();
-  for (int ielement = 0; ielement < size; ielement++) {
-    key_buffer[ielement] = rand() % (size * 10);
-  }
+  std::vector<int> keys(size);
+  for (int &key : keys) { key = rand() % (size * 10); }
+  CUDA_RT_CALL(cudaMemcpy(key_column->mutable_view().head<int>(),
+                          keys.data(),
+                          size * sizeof(int),
+                          cudaMemcpyDefault));
 
   columns.push_back(std::move(key_column));
 
@@ -68,24 +73,44 @@ void run_test(int nrows_per_gpu, bool compression, Communicator *communicator)
   auto compression_options =
     generate_compression_options_distributed(input_table->view(), compression);
 
+  CUDA_RT_CALL(cudaDeviceSynchronize());
+  MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
+  auto start = std::chrono::high_resolution_clock::now();
+
   std::unique_ptr<cudf::table> output_table = shuffle_on(
     input_table->view(), {0}, communicator, compression_options, cudf::hash_id::HASH_IDENTITY);
 
-  assert(output_table->view().num_columns() == 1);
-  cudf::size_type num_rows_shuffled = output_table->view().column(0).size();
-  auto key_buffer                   = output_table->view().column(0).head<int>();
+  CUDA_RT_CALL(cudaDeviceSynchronize());
+  MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
+  auto stop = std::chrono::high_resolution_clock::now();
 
+  if (output_table->view().num_columns() != 1) {
+    std::cerr << "FAIL: expected 1 column\n";
+    exit(1);
+  }
+  cudf::size_type num_rows_shuffled = output_table->view().column(0).size();
+  std::vector<int> keys(num_rows_shuffled);
   if (num_rows_shuffled != 0) {
-    [[maybe_unused]] int mod_result = key_buffer[0] % communicator->mpi_size;
-    for (cudf::size_type ielement = 0; ielement < num_rows_shuffled; ielement++) {
-      assert(key_buffer[ielement] % communicator->mpi_size == mod_result);
+    CUDA_RT_CALL(cudaMemcpy(keys.data(),
+                            output_table->view().column(0).head<int>(),
+                            num_rows_shuffled * sizeof(int),
+                            cudaMemcpyDefault));
+    int const mod_result = keys[0] % communicator->mpi_size;
+    for (int key : keys) {
+      if (key % communicator->mpi_size != mod_result) {
+        std::cerr << "FAIL: rank " << communicator->mpi_rank << " received key " << key
+                  << " with hash " << key % communicator->mpi_size << ", expected " << mod_result
+                  << "\n";
+        exit(1);
+      }
     }
   }
 
-  MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
   if (communicator->mpi_rank == 0) {
     std::cerr << std::boolalpha;
     std::cerr << "Test case (" << nrows_per_gpu << "," << compression << ") passes successfully.\n";
+    std::cerr << "Shuffle time (s) " << std::chrono::duration<double>(stop - start).count()
+              << " compression=" << compression << "\n";
   }
 }
 
@@ -94,16 +119,26 @@ int main(int argc, char *argv[])
   MPI_CALL(MPI_Init(&argc, &argv));
   set_cuda_device();
 
-  rmm::mr::managed_memory_resource mr;
-  rmm::mr::set_current_device_resource(&mr);
+  std::string communicator_name = "UCX";
+  int nrows_per_gpu             = 1'000'000;
+  for (int iarg = 0; iarg + 1 < argc; iarg++) {
+    if (!strcmp(argv[iarg], "--communicator")) { communicator_name = argv[iarg + 1]; }
+    if (!strcmp(argv[iarg], "--nrows")) { nrows_per_gpu = atoi(argv[iarg + 1]); }
+  }
 
-  UCXCommunicator *communicator = initialize_ucx_communicator(false, 0, 0);
+  Communicator *communicator{nullptr};
+  registered_memory_resource *registered_mr{nullptr};
+  rmm::mr::pool_memory_resource<rmm::mr::device_memory_resource> *pool_mr{nullptr};
+  setup_memory_pool_and_communicator(
+    communicator, registered_mr, pool_mr, communicator_name, "preregistered", 0);
+  if (communicator->mpi_rank == 0) { std::cerr << "Communicator: " << communicator_name << "\n"; }
 
-  run_test(1'000'000, false, communicator);
-  run_test(1'000'000, true, communicator);
+  run_test(nrows_per_gpu, false, communicator);  // warmup: first-touch pool + connections
+  run_test(nrows_per_gpu, false, communicator);
+  run_test(nrows_per_gpu, true, communicator);
 
-  communicator->finalize();
-  delete communicator;
+  destroy_memory_pool_and_communicator(
+    communicator, registered_mr, pool_mr, communicator_name, "preregistered");
   MPI_CALL(MPI_Finalize());
 
   return 0;

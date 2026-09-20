@@ -44,10 +44,10 @@ size_t recommended_rmm_pool_size(size_t reserve_bytes = 0);
  * initialized in this function can be destroyed by *destroy_memory_pool_and_communicator*.
  *
  * @param[out]: communicator Communicator to be constructed.
- * @param[out]: registered_mr If the memory pool needs to be preregistered, this argument holds
- * pointer to the registered memory resource. If not preregistered, this argument will be *nullptr*.
+ * @param[out]: registered_mr If the UCX memory pool needs to be preregistered, this argument holds
+ * pointer to the registered memory resource. NIXL registers the pool internally; this is *nullptr*.
  * @param[out]: pool_mr RMM memory resource for memory pool.
- * @param[in]: communicator_name Can be either "NCCL" or "UCX".
+ * @param[in]: communicator_name Can be either "NCCL", "NIXL", or "UCX".
  * @param[in]: registration_method If using UCX communicator, this argument can be either "none",
  * "buffer" or "preregistered".
  * @param[in]: communicator_buffer_size If the registration_method is set to "buffer", this argument

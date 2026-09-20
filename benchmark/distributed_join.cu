@@ -53,7 +53,9 @@ means smaller batch size. `1` means no overlap. Default: `1`.
 
 **--communicator [STR]**
 
-This option can be either "UCX" or "NCCL", which controls what communicator to use. Default: `UCX`.
+This option can be either "UCX", "NCCL", or "NIXL", which controls what communicator to use.
+Default: `UCX`. NCCL and NIXL keep MPI as the launcher and host-side control plane; NIXL uses
+one-sided `NIXL_WRITE` over the UCX backend for GPU payloads.
 
 **--registration-method [STR]**
 
