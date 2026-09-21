@@ -144,7 +144,8 @@ void run_all_to_all(int64_t size,
 
   /* Deallocate send/recv buffers */
 
-  for (int irank = 0; irank < mpi_rank; irank++) {
+  for (int irank = 0; irank < mpi_size; irank++) {
+    if (irank == mpi_rank) continue;
     mr->deallocate(rmm::cuda_stream_default, send_buffer[irank], size / mpi_size);
     mr->deallocate(rmm::cuda_stream_default, recv_buffer[irank], size / mpi_size);
   }

@@ -413,9 +413,16 @@ void all_to_all_comm(vector<AllToAllCommBuffer> &all_to_all_comm_buffers,
     // Calculate and communicate offsets for the compressed buffers
     buffer.compressed_send_offsets.resize(comm_group_size + 1);
     buffer.compressed_send_offsets[0] = 0;
+    // nvCOMP reads the compressed header with aligned loads, so every partition must start at
+    // an aligned offset inside the merged buffer. Pad each compressed size up to 256 bytes (the
+    // RMM allocation alignment); the receiver's create_manager ignores the trailing padding.
+    constexpr int64_t compressed_alignment = 256;
     for (int local_idx = 0; local_idx < comm_group_size; local_idx++) {
+      int64_t const padded_size =
+        (static_cast<int64_t>(compressed_buffer_sizes[local_idx]) + compressed_alignment - 1) /
+        compressed_alignment * compressed_alignment;
       buffer.compressed_send_offsets[local_idx + 1] =
-        buffer.compressed_send_offsets[local_idx] + compressed_buffer_sizes[local_idx];
+        buffer.compressed_send_offsets[local_idx] + padded_size;
     }
 
     if (report_timing) {

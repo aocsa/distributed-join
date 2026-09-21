@@ -67,6 +67,12 @@ size_t recommended_rmm_pool_size(size_t reserve_bytes)
   // GB10 reports the full unified CPU/GPU RAM via cudaMemGetInfo. Leaving only
   // 500MB (the old discrete-GPU heuristic) OOMs the box.
   if (prop.integrated) { pool_size = std::min(pool_size, total_memory / 8); }
+  // RMM_POOL_GIB caps the pool when the GPU is shared with other processes; the
+  // free-memory heuristic otherwise leaves NCCL/UCX too little for their own buffers.
+  if (char const *gib = std::getenv("RMM_POOL_GIB")) {
+    size_t const cap = std::strtoull(gib, nullptr, 10) << 30;
+    if (cap > 0) { pool_size = std::min(pool_size, cap); }
+  }
   pool_size = pool_size / 256 * 256;
 
   return pool_size;
